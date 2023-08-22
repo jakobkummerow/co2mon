@@ -1,4 +1,4 @@
-const {exec, spawn} = require('child_process');
+const {spawn} = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const url = require('url');
@@ -6,14 +6,11 @@ const url = require('url');
 const kPort = 8553;
 const kSaveFileName = 'saved_data.txt';
 const kDriverExeName = './driver.bin';
-// We're getting 3 data points per 2 seconds, so we need
-// 3600 / 2 * 3 == 5400 capacity per hour.
-const kDataCapacity = 5400;
-
-const kDetectHidraw = 'dmesg | grep zyTemp | grep input0 | tail -1 | ' +
-    'sed -e \'s/.*hidraw\\([[:digit:]]\\+\\).*/\\/dev\\/hidraw\\1/\'';
-
-let g_hidraw_device;
+// We're tracking 3 metrics; each gets a data point every 2 seconds or
+// 1800 data points per hour. My screen can draw ~2700 canvas pixels, which
+// amounts to 1.5 hours. Store enough to fill that, i.e:
+// 1800 * 1.5 * 3 = 8100.
+const kDataCapacity = 8100;
 
 class DataPoint {
   constructor(metric, time, value) {
@@ -193,32 +190,19 @@ class PendingRequests {
 
 let g_pending_requests = new PendingRequests();
 
-exec(kDetectHidraw, (error, stdout, stderr) => {
-  if (error) {
-    console.log(`error: ${error.message}`);
-    return;
-  }
-  if (stderr) {
-    console.log(`stderr: ${stderr}`);
-    return;
-  }
-  g_hidraw_device = stdout.trim();
-  console.log(`device detected: ${g_hidraw_device}`);
-
-  let driver = spawn(kDriverExeName, [g_hidraw_device]);
-  driver.stdout.on('data', function(data) {
-    process.stdout.write(data);
-    let dp = DataPoint.fromLogLine(data.toString());
-    if (dp === null) return;
-    g_data.addDataPoint(dp);
-    g_pending_requests.Notify();
-  });
-  driver.stderr.on('data', function(data) {
-    process.stderr.write(data);
-  });
-  driver.on('close', function(code, signal) {
-    console.log(`${kDriverExeName} closed with signal ${signal}, code ${code}`);
-  });
+let driver = spawn(kDriverExeName);
+driver.stdout.on('data', function(data) {
+  //process.stdout.write(data);
+  let dp = DataPoint.fromLogLine(data.toString());
+  if (dp === null) return;
+  g_data.addDataPoint(dp);
+  g_pending_requests.Notify();
+});
+driver.stderr.on('data', function(data) {
+  process.stderr.write(data);
+});
+driver.on('close', function(code, signal) {
+  console.log(`${kDriverExeName} closed with signal ${signal}, code ${code}`);
 });
 
 const server = http.createServer((req, res) => {

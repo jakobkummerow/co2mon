@@ -6,39 +6,67 @@
 #include <string.h>
 #include <unistd.h>
 
+static constexpr int kDevicesToCheck = 20;
 
-int main(int argc, char **argv) {
-  if (argc != 2 || strcmp(argv[1], "-h") == 0) {
-    printf("Pass a hidraw device as the first and only parameter!\n");
-    printf("You may find the right device with:\n");
-    printf("  dmesg | grep zyTemp | grep input0 | tail -1 | "
-           "sed -e 's/.*hidraw\\([[:digit:]]\\+\\).*/\\/dev\\/hidraw\\1/'\n");
-    return 1;
-  }
-  int fd = open(argv[1], O_RDWR);
-  if (fd < 0) {
-    perror("Unable to open device");
-    return 1;
-  }
+int MaybeOpenDevice(const char *device, bool print_errors) {
   struct hidraw_devinfo info;
   memset(&info, 0, sizeof(info));
+  int fd = open(device, O_RDWR);
+  if (fd < 0) {
+    if (print_errors) perror("Unable to open device");
+    return fd;
+  }
   int res = ioctl(fd, HIDIOCGRAWINFO, &info);
   if (res < 0) {
-    perror("HIDIOCGRAWINFO");
-    return 1;
-  } else {
-    if (info.vendor != 0x04d9) {
-      printf("Error: Wrong vendor ID, make sure you got the right "
-             "hidraw device!\n");
-      return 1;
-    }
-    if (info.product != static_cast<__s16>(0xa052)) {
-      printf("Warning: Unknown product ID 0x%x!\n", info.product);
+    close(fd);
+    if (print_errors) perror("ioctl failed");
+    return -1;
+  }
+  if (info.vendor != 0x04d9) {
+    close(fd);
+    if (print_errors) perror("wrong vendor id");
+    return -1;
+  }
+  if (info.product != static_cast<__s16>(0xa052)) {
+    close(fd);
+    if (print_errors) perror("wrong product id");
+    return -1;
+  }
+  return fd;
+}
+
+int DetectDevice() {
+  char device[] = "/dev/hidraw00";
+  for (int i = 0; i < kDevicesToCheck; i++) {
+    snprintf(device, sizeof(device), "/dev/hidraw%d", i);
+    int fd = MaybeOpenDevice(device, false);
+    if (fd >= 0) {
+      printf("Detected device: %s\n", device);
+      return fd;
     }
   }
+  printf("Didn't detect suitable device.\n");
+  return -1;
+}
+
+int main(int argc, char **argv) {
+  int fd = -1;
+  if (argc == 1) {
+    fd = DetectDevice();
+  } else if (argc == 2 && strcmp(argv[1], "-h") != 0) {
+    fd = MaybeOpenDevice(argv[1], true);
+  } else {
+    printf("Pass a hidraw device as the first and only parameter, or "
+           "skip it for auto-detection.\n"
+           "You may find the right device with:\n"
+           "  dmesg | grep zyTemp | grep input0 | tail -1 |"
+           "  sed -e 's/.*hidraw\\([[:digit:]]\\+\\).*/\\/dev\\/hidraw\\1/'\n");
+  }
+  if (fd < 0) return 1;
+
   char buf[16];
   memset(buf, 0, sizeof(buf));
-  res = ioctl(fd, HIDIOCSFEATURE(9), buf);
+  int res = ioctl(fd, HIDIOCSFEATURE(9), buf);
   if (res < 0) {
     perror("HIDIOCSFEATURE");
     return 1;
