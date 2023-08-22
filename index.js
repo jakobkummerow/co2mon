@@ -80,7 +80,9 @@ class Timeline {
     let absolute = this.min_time + (this.max_time - this.min_time) * t;
     let delta = Infinity;
     // Linear search for now, might improve later.
-    for (let i = 0, index = this.cursor, last = index; i < this.size; i++) {
+    let index = this.firstIndex();
+    let last = index;
+    for (let i = 0; i < this.size; i++) {
       let new_delta = Math.abs(this.time[index] - absolute);
       if (new_delta > delta) return last;
       delta = new_delta;
@@ -88,7 +90,7 @@ class Timeline {
       index++;
       if (index > this.size) index = 0;
     }
-    return this.size - 1;
+    return last;
   }
 }
 
@@ -310,6 +312,8 @@ class Plot {
       let v = this.data.value[index];
       let draw_x = this.ToRelativeTime(t);
       let draw_y = this.ToRelativeValue(v);
+      let draw_dot_x = draw_x;
+      let draw_dot_y = draw_y;
 
       this.ctx.fillStyle = "#ffffd0";
       let formatted = this.config.Format(v);
@@ -324,7 +328,7 @@ class Plot {
       this.ctx.fillText(text, draw_x + 5, draw_y + kHeight / 2 + 1, width);
 
       this.ctx.beginPath();
-      this.ctx.arc(draw_x, draw_y, 4, 0, Math.PI * 2);
+      this.ctx.arc(draw_dot_x, draw_dot_y, 4, 0, Math.PI * 2);
       this.ctx.fill();
     }
   }
@@ -350,7 +354,7 @@ class Plot {
 
   IndexFromCoordinates(x) {
     let in_area = x - this.min_draw_x;
-    let scaled = in_area / this.data.size /*/ 20*/;
+    let scaled = in_area / this.data.size;
     return this.data.IndexFromRelative(scaled);
   }
 }
