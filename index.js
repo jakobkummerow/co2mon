@@ -88,7 +88,7 @@ class Timeline {
       delta = new_delta;
       last = index;
       index++;
-      if (index > this.size) index = 0;
+      if (index >= this.size) index = 0;
     }
     return last;
   }
